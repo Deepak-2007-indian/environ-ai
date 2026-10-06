@@ -1,7 +1,6 @@
-import os
-import socket
 import streamlit as st
 import ollama
+import socket
 from google import genai
 from google.genai import types
 
@@ -229,16 +228,16 @@ if "rename_mode" not in st.session_state:
 if "active_mode" not in st.session_state:
     st.session_state.active_mode = "Online Mode"
 
-# Fetch Gemini API key safely and strip extra whitespace
+# Fetch Gemini API key
 gemini_key = ""
 try:
     if "GEMINI_API_KEY" in st.secrets:
-        gemini_key = str(st.secrets["GEMINI_API_KEY"]).strip()
+        gemini_key = st.secrets["AQ.Ab8RN6IxidPVcPFRFamb-1gZyQRWZ_FEAOcTCUPvwo9dvyBMwA"]
 except Exception:
     pass
 
 if not gemini_key:
-    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    gemini_key = "AQ.Ab8RN6IxidPVcPFRFamb-1gZyQRWZ_FEAOcTCUPvwo9dvyBMwA"
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
@@ -335,12 +334,10 @@ if prompt := st.chat_input("TYPE YOUR QUERIES..."):
         
         api_payload = [SYSTEM_PROMPT] + current_messages
 
-        # ROUTE 1: ONLINE MODE (GOOGLE GEMINI STREAMING)
+        # ROUTE 1: ONLINE MODE (GOOGLE GEMINI 3.5 FLASH STREAMING)
         if st.session_state.active_mode == "Online Mode":
             if not is_online():
                 st.error("Network Connection Error: Disconnected from the internet. Switch to Offline Mode.")
-            elif not gemini_key:
-                st.error("Online Mode Error: Missing or invalid GEMINI_API_KEY in Streamlit Secrets.")
             else:
                 try:
                     client = genai.Client(api_key=gemini_key)
@@ -376,7 +373,7 @@ if prompt := st.chat_input("TYPE YOUR QUERIES..."):
                     message_placeholder.markdown(f"{full_response}▌")
                 message_placeholder.markdown(full_response)
             except Exception as e:
-                st.info("ℹ️ Offline Mode requires running Ollama locally on your desktop app. Switch to Online Mode to chat on the web cloud version!")
+                st.error(f"Offline Mode Error: Ensure Ollama (Llama 3.2) is active locally. ({str(e)})")
 
         if full_response:
             current_messages.append({"role": "assistant", "content": full_response})

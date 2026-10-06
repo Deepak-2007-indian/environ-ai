@@ -1,8 +1,19 @@
 import streamlit as st
 import ollama
+import socket
+from google import genai
+from google.genai import types
 
 # Set wide layout mode and page config
 st.set_page_config(page_title="ENVIRON", layout="wide", initial_sidebar_state="expanded")
+
+# --- INTERNET CHECK FUNCTION ---
+def is_online():
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        return True
+    except OSError:
+        return False
 
 # Custom UI Styling (Pure Matte Black & Gold Accent Line)
 st.markdown("""
@@ -172,15 +183,15 @@ st.markdown("""
 SYSTEM_PROMPT = {
     "role": "system",
     "content": (
-        "You are ENVIRON, a modern, ultra-fast, intelligent, and eco-friendly offline AI assistant.\n\n"
+        "You are ENVIRON, a modern, ultra-fast, intelligent, and eco-friendly hybrid AI assistant.\n\n"
         "1. EXACT INTRODUCTION PERSONA:\n"
         "   - If asked 'who are you', 'introduce yourself', or greeted generally:\n"
-        "     State: 'Hello! I am ENVIRON, a modern offline AI assistant. "
+        "     State: 'Hello! I am ENVIRON, a modern hybrid AI assistant. You can use me in both Online and Offline mode! "
         "I am built to assist you in every possible way—helping you in academics, providing accurate information and facts, having friendly conversations, and playing interactive games. "
         "I am completely safe for the environment because I do not require millions of gallons of water to run, and all our chats are completely safe, secured, and private. "
         "Your data is stored locally on your device and never sent to any external server! 🌿'\n\n"
-        "2. ADVANTAGES OF ENVIRON OFFLINE AI:\n"
-        "   - If asked 'how are you better than ChatGPT / Gemini':\n"
+        "2. DIFFERENCE FROM CHATGPT / GEMINI & OFFLINE ADVANTAGES:\n"
+        "   - If asked 'what is the difference between online and offline AI' or 'how are you better than ChatGPT / Gemini':\n"
         "     Highlight: 'You can use ENVIRON anywhere and anytime because I operate as a powerful offline AI assistant. "
         "Unlike cloud-only models like ChatGPT or Gemini, all your chats with ENVIRON are 100% private and secured locally on your device without transmitting data to remote servers. "
         "Furthermore, ENVIRON is an eco-friendly AI assistant—local execution eliminates the massive energy footprint and millions of gallons of water required to cool industrial cloud data centers. "
@@ -214,12 +225,34 @@ if "active_chat" not in st.session_state:
     st.session_state.active_chat = "Chat 1"
 if "rename_mode" not in st.session_state:
     st.session_state.rename_mode = False
+if "active_mode" not in st.session_state:
+    st.session_state.active_mode = "Online Mode"
+
+# Fetch Gemini API key
+gemini_key = ""
+try:
+    if "GEMINI_API_KEY" in st.secrets:
+        gemini_key = st.secrets["AQ.Ab8RN6IVKUgXefND9EpDJMLbv0e7DFldKFdX7qcI-dKgV3NXFQ"]
+except Exception:
+    pass
+
+if not gemini_key:
+    gemini_key = "AQ.Ab8RN6IVKUgXefND9EpDJMLbv0e7DFldKFdX7qcI-dKgV3NXFQ"
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
     st.markdown("<div class='sidebar-brand-top'>ENVIRON</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='mode-status'>System Status : <span>100% Offline Mode</span></div>", unsafe_allow_html=True)
+    # Top-Down Stacked Mode Switcher
+    if st.button("Online Mode", use_container_width=True):
+        st.session_state.active_mode = "Online Mode"
+        st.rerun()
+        
+    if st.button("Offline Mode", use_container_width=True):
+        st.session_state.active_mode = "Offline Mode"
+        st.rerun()
+
+    st.markdown(f"<div class='mode-status'>active : <span>{st.session_state.active_mode}</span></div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -301,21 +334,46 @@ if prompt := st.chat_input("TYPE YOUR QUERIES..."):
         
         api_payload = [SYSTEM_PROMPT] + current_messages
 
-        # LOCAL OLLAMA / LLAMA 3.2 EXECUTION
-        try:
-            stream = ollama.chat(
-                model="llama3.2",
-                messages=api_payload,
-                stream=True,
-                options={"temperature": 0.7, "top_p": 0.9}
-            )
-            for chunk in stream:
-                token = chunk['message']['content']
-                full_response += token
-                message_placeholder.markdown(f"{full_response}▌")
-            message_placeholder.markdown(full_response)
-        except Exception as e:
-            st.error(f"Offline Mode Error: Make sure Ollama is running locally with 'llama3.2'. Details: ({str(e)})")
+        # ROUTE 1: ONLINE MODE (GOOGLE GEMINI 3.5 FLASH STREAMING)
+        if st.session_state.active_mode == "Online Mode":
+            if not is_online():
+                st.error("Network Connection Error: Disconnected from the internet. Switch to Offline Mode.")
+            else:
+                try:
+                    client = genai.Client(api_key=gemini_key)
+                    response_stream = client.models.generate_content_stream(
+                        model="gemini-3.5-flash",
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PROMPT["content"],
+                            temperature=0.7,
+                            top_p=0.9
+                        )
+                    )
+                    for chunk in response_stream:
+                        if chunk.text:
+                            full_response += chunk.text
+                            message_placeholder.markdown(f"{full_response}▌")
+                    message_placeholder.markdown(full_response)
+                except Exception as e:
+                    st.error(f"Online Mode Error: {str(e)}")
+
+        # ROUTE 2: OFFLINE MODE (LOCAL OLLAMA / LLAMA 3.2)
+        else:
+            try:
+                stream = ollama.chat(
+                    model="llama3.2",
+                    messages=api_payload,
+                    stream=True,
+                    options={"temperature": 0.7, "top_p": 0.9}
+                )
+                for chunk in stream:
+                    token = chunk['message']['content']
+                    full_response += token
+                    message_placeholder.markdown(f"{full_response}▌")
+                message_placeholder.markdown(full_response)
+            except Exception as e:
+                st.error(f"Offline Mode Error: Ensure Ollama (Llama 3.2) is active locally. ({str(e)})")
 
         if full_response:
             current_messages.append({"role": "assistant", "content": full_response})
